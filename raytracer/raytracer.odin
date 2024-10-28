@@ -22,6 +22,11 @@ Material :: struct {
     diffuse_color: vec3,
 }
 
+Light :: struct {
+    position: vec3,
+    intensity: f64,
+}
+
 main :: proc() {
     ctx := Ctx{1024, 768};
     sphere: Sphere = {vec3{-3, 0, -16}, 2, Material{vec3{0.5,0.5,0.5}}};
@@ -36,14 +41,15 @@ main :: proc() {
     framebuffer: [dynamic]vec3
     resize(&framebuffer, ctx.width * ctx.height);
 
-
+    lights: [dynamic]Light;
+    append_elem(&lights, Light{vec3{-20,20,20}, 1.5});
     
     for j in 0..< ctx.height {
         for i in 0..< ctx.width {
             x: f64 = (2 * (f64(i)+ 0.5) / f64(ctx.width) - 1) * math.tan(fov/2)*f64(ctx.width)/f64(ctx.height);
             y: f64 = -(2 * (f64(j) + 0.5) / f64(ctx.height) - 1) * math.tan(fov/2);
             dir: vec3 = la.normalize(vec3{x, y, -1});
-            framebuffer[j * ctx.width + i] = cast_ray(&vec3{0,0,0}, &dir, &spheres)
+            framebuffer[j * ctx.width + i] = cast_ray(&vec3{0,0,0}, &dir, &spheres, &lights)
         }
     }
 
@@ -107,7 +113,7 @@ scene_intersect :: proc(orig: ^vec3, dir: ^vec3, spheres: ^[dynamic]Sphere, hit:
 }
 
 
-cast_ray :: proc(orig: ^vec3, dir: ^vec3, spheres: ^[dynamic]Sphere) -> vec3 {
+cast_ray :: proc(orig: ^vec3, dir: ^vec3, spheres: ^[dynamic]Sphere, lights: ^[dynamic]Light) -> vec3 {
     point: vec3;
     N: vec3;
     material: Material;
@@ -116,5 +122,11 @@ cast_ray :: proc(orig: ^vec3, dir: ^vec3, spheres: ^[dynamic]Sphere) -> vec3 {
         return vec3{0.2, 0.7, 0.8};
     }
 
-    return material.diffuse_color;
+    diffuse_light_intensity: f64;
+    for i in 0..< len(lights) {
+        light_dir: vec3 = la.normalize(lights[i].position - point)
+        diffuse_light_intensity += lights[i].intensity * max(0, la.dot(light_dir,N));
+    }
+
+    return material.diffuse_color * diffuse_light_intensity;
 }
