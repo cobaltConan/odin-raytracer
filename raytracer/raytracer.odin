@@ -15,22 +15,35 @@ Ctx :: struct {
 Sphere :: struct {
     centre: vec3,
     radius: f64,
+    material: Material,
 };
+
+Material :: struct {
+    diffuse_color: vec3,
+}
 
 main :: proc() {
     ctx := Ctx{1024, 768};
-    sphere: Sphere = {vec3{-3, 0, -16}, 2};
+    sphere: Sphere = {vec3{-3, 0, -16}, 2, Material{vec3{0.5,0.5,0.5}}};
+    spheres: [dynamic]Sphere;
+    append_elem(&spheres, Sphere{vec3{-3, 0, -16}, 2, Material{vec3{0.5,0.5,0.5}}});
+    append_elem(&spheres, Sphere{vec3{-1, -1.5, -12}, 2, Material{vec3{0.3,0.1,0.1}}});
+    append_elem(&spheres, Sphere{vec3{1.5, -0.5, -18}, 4, Material{vec3{0.9,0.9,0.1}}});
+    append_elem(&spheres, sphere);
+
     fov: f64 = math.PI / 2
 
     framebuffer: [dynamic]vec3
     resize(&framebuffer, ctx.width * ctx.height);
+
+
     
     for j in 0..< ctx.height {
         for i in 0..< ctx.width {
             x: f64 = (2 * (f64(i)+ 0.5) / f64(ctx.width) - 1) * math.tan(fov/2)*f64(ctx.width)/f64(ctx.height);
             y: f64 = -(2 * (f64(j) + 0.5) / f64(ctx.height) - 1) * math.tan(fov/2);
             dir: vec3 = la.normalize(vec3{x, y, -1});
-            framebuffer[j * ctx.width + i] = cast_ray(&vec3{0,0,0}, &dir, &sphere)
+            framebuffer[j * ctx.width + i] = cast_ray(&vec3{0,0,0}, &dir, &spheres)
         }
     }
 
@@ -63,25 +76,45 @@ write_PPM :: proc(framebuffer: ^[dynamic]vec3, ctx: ^Ctx) {
 }
 
 
-ray_intersect :: proc(orig: ^vec3, dir: ^vec3, t0: f64, sphere: ^Sphere) -> bool {
+ray_intersect :: proc(orig: ^vec3, dir: ^vec3, t0: ^f64, sphere: ^Sphere) -> bool {
     L: vec3 = sphere.centre - orig^;
     tca: f64 = la.dot(L,dir^);
     d2 := la.dot(L, L) - tca*tca;
     if (d2 > sphere.radius*sphere.radius) {return false};
     thc := math.sqrt(sphere.radius*sphere.radius - d2);
-    t0 := tca - thc;
+    t0^ = tca - thc;
     t1 := tca + thc;
-    if (t0 < 0) {t0 = t1};
-    if (t0 < 0) {return false};
+    if (t0^ < 0) {t0^ = t1};
+    if (t0^ < 0) {return false};
     return true;
 }
 
 
-cast_ray :: proc(orig: ^vec3, dir: ^vec3, sphere: ^Sphere) -> vec3 {
-    sphere_dist: f64 = 10000000;
-    if (!ray_intersect(orig, dir, sphere_dist, sphere)) {
+scene_intersect :: proc(orig: ^vec3, dir: ^vec3, spheres: ^[dynamic]Sphere, hit: ^vec3, N: ^vec3, material: ^Material) -> bool {
+    spheres_dist: f64 = 10000000;
+
+    for i in 0..< len(spheres) {
+        dist_i: f64;
+        if (ray_intersect(orig, dir, &dist_i, &spheres[i]) && dist_i < spheres_dist) {
+            spheres_dist = dist_i;
+            hit^ = orig^ + dir^ * dist_i;
+            N^ = la.normalize(hit^ - spheres[i].centre);
+            material^ = spheres[i].material;
+        }
+    }
+
+    return spheres_dist < 1000;
+}
+
+
+cast_ray :: proc(orig: ^vec3, dir: ^vec3, spheres: ^[dynamic]Sphere) -> vec3 {
+    point: vec3;
+    N: vec3;
+    material: Material;
+
+    if (!scene_intersect(orig, dir, spheres, &point, &N, &material)) {
         return vec3{0.2, 0.7, 0.8};
     }
 
-    return vec3{0.4, 0.4, 0.3};
+    return material.diffuse_color;
 }
