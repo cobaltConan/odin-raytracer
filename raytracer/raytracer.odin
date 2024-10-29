@@ -6,6 +6,7 @@ import math "core:math"
 import la "core:math/linalg"
 
 vec3 :: la.Vector3f64
+vec2 :: la.Vector2f64
 
 Ctx :: struct {
     width: int,
@@ -20,6 +21,8 @@ Sphere :: struct {
 
 Material :: struct {
     diffuse_color: vec3,
+    albedo: vec2,
+    specular_exponent: f64,
 }
 
 Light :: struct {
@@ -29,12 +32,10 @@ Light :: struct {
 
 main :: proc() {
     ctx := Ctx{1024, 768};
-    sphere: Sphere = {vec3{-3, 0, -16}, 2, Material{vec3{0.5,0.5,0.5}}};
     spheres: [dynamic]Sphere;
-    append_elem(&spheres, Sphere{vec3{-3, 0, -16}, 2, Material{vec3{0.5,0.5,0.5}}});
-    append_elem(&spheres, Sphere{vec3{-1, -1.5, -12}, 2, Material{vec3{0.3,0.1,0.1}}});
-    append_elem(&spheres, Sphere{vec3{1.5, -0.5, -18}, 4, Material{vec3{0.9,0.9,0.1}}});
-    append_elem(&spheres, sphere);
+    append_elem(&spheres, Sphere{vec3{-3, 0, -16}, 2, Material{vec3{0.5,0.5,0.5}, vec2{0.6, 0.3}, 50}});
+    append_elem(&spheres, Sphere{vec3{-1, -1.5, -12}, 2, Material{vec3{0.3,0.1,0.1}, vec2{0.9, 0.1}, 10}});
+    append_elem(&spheres, Sphere{vec3{1.5, -0.5, -18}, 4, Material{vec3{0.1,0.1,0.1}, vec2{0.9, 0.9}, 8}});
 
     fov: f64 = math.PI / 2
 
@@ -43,7 +44,9 @@ main :: proc() {
 
     lights: [dynamic]Light;
     append_elem(&lights, Light{vec3{-20,20,20}, 1.5});
-    
+    append_elem(&lights, Light{vec3{30,50,-25}, 1.8});
+    append_elem(&lights, Light{vec3{30,20,30}, 1.7});
+
     for j in 0..< ctx.height {
         for i in 0..< ctx.width {
             x: f64 = (2 * (f64(i)+ 0.5) / f64(ctx.width) - 1) * math.tan(fov/2)*f64(ctx.width)/f64(ctx.height);
@@ -51,6 +54,17 @@ main :: proc() {
             dir: vec3 = la.normalize(vec3{x, y, -1});
             framebuffer[j * ctx.width + i] = cast_ray(&vec3{0,0,0}, &dir, &spheres, &lights)
         }
+    }
+
+    see: ^vec3
+    c: vec3
+    maxi: f64
+    
+    for i in 0..< ctx.height * ctx.width {
+        see = &framebuffer[i];
+        c = see^;
+        maxi = max(c[0], max(c[1], c[2])) 
+        if (maxi > 1) {c = c * (1/maxi)};
     }
 
     write_PPM(&framebuffer, &ctx);
@@ -81,6 +95,9 @@ write_PPM :: proc(framebuffer: ^[dynamic]vec3, ctx: ^Ctx) {
 
 }
 
+reflect :: proc(I: ^vec3, N: ^vec3) -> vec3 {
+    return (I^ - N^ * 2 * I^ * N^);
+}
 
 ray_intersect :: proc(orig: ^vec3, dir: ^vec3, t0: ^f64, sphere: ^Sphere) -> bool {
     L: vec3 = sphere.centre - orig^;
@@ -123,10 +140,14 @@ cast_ray :: proc(orig: ^vec3, dir: ^vec3, spheres: ^[dynamic]Sphere, lights: ^[d
     }
 
     diffuse_light_intensity: f64;
+    specular_light_intensity: f64;
+
     for i in 0..< len(lights) {
-        light_dir: vec3 = la.normalize(lights[i].position - point)
+        light_dir: vec3 = la.normalize(lights[i].position - point);
         diffuse_light_intensity += lights[i].intensity * max(0, la.dot(light_dir,N));
+        light_dir = -light_dir;
+        specular_light_intensity += math.pow(max(0, la.dot(-reflect(&light_dir, &N),dir^)), material.specular_exponent) * lights[i].intensity;
     }
 
-    return material.diffuse_color * diffuse_light_intensity;
+    return material.diffuse_color * diffuse_light_intensity * material.albedo[0] + vec3{1,1,1} * specular_light_intensity * material.albedo[1];
 }
