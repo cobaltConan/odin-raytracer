@@ -144,6 +144,17 @@ cast_ray :: proc(orig: ^vec3, dir: ^vec3, spheres: ^[dynamic]Sphere, lights: ^[d
 
     for i in 0..< len(lights) {
         light_dir: vec3 = la.normalize(lights[i].position - point);
+        light_distance: f64 = la.length(lights[i].position - point);
+
+        shadow_orig: vec3 = la.dot(light_dir, N) < 0 ? point - N * 0.001 : point + N * 0.001
+        shadow_pt: vec3
+        shadow_N: vec3
+        tmpMaterial: Material
+
+        if (scene_intersect(&shadow_orig, &light_dir, spheres, &shadow_pt, &shadow_N, &tmpMaterial) && (la.length(shadow_pt - shadow_orig) < light_distance)) {
+            continue
+        }
+
         diffuse_light_intensity += lights[i].intensity * max(0, la.dot(light_dir,N));
         light_dir = -light_dir;
         specular_light_intensity += math.pow(max(0, la.dot(-reflect(&light_dir, &N),dir^)), material.specular_exponent) * lights[i].intensity;
