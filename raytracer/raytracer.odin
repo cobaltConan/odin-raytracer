@@ -20,8 +20,8 @@ Sphere :: struct {
 };
 
 Material :: struct {
+    albedo: vec3,
     diffuse_color: vec3,
-    albedo: vec2,
     specular_exponent: f64,
 }
 
@@ -33,9 +33,14 @@ Light :: struct {
 main :: proc() {
     ctx := Ctx{1024, 768};
     spheres: [dynamic]Sphere;
-    append_elem(&spheres, Sphere{vec3{-3, 0, -16}, 2, Material{vec3{0.5,0.5,0.5}, vec2{0.6, 0.3}, 50}});
-    append_elem(&spheres, Sphere{vec3{-1, -1.5, -12}, 2, Material{vec3{0.3,0.1,0.1}, vec2{0.9, 0.1}, 10}});
-    append_elem(&spheres, Sphere{vec3{1.5, -0.5, -18}, 4, Material{vec3{0.1,0.1,0.1}, vec2{0.9, 0.9}, 8}});
+
+    ivory: Material = Material{vec3{0.6,0.3,0.1}, vec3{0.4, 0.4, 0.3}, 50};
+    rubber: Material = Material{vec3{0.9,0.1,0.0}, vec3{0.3, 0.1, 0.1}, 10};
+    mirror: Material = Material{vec3{0.0,10.0,0.8}, vec3{1,1,1}, 1425};
+
+    append_elem(&spheres, Sphere{vec3{-3, 0, -16}, 2, ivory})
+    append_elem(&spheres, Sphere{vec3{-1, -1.5, -12}, 2, mirror})
+    append_elem(&spheres, Sphere{vec3{1.5, -0.5, -18}, 4, rubber})
 
     fov: f64 = math.PI / 2
 
@@ -43,16 +48,15 @@ main :: proc() {
     resize(&framebuffer, ctx.width * ctx.height);
 
     lights: [dynamic]Light;
-    append_elem(&lights, Light{vec3{-20,20,20}, 1.5});
-    append_elem(&lights, Light{vec3{30,50,-25}, 1.8});
-    append_elem(&lights, Light{vec3{30,20,30}, 1.7});
+    append_elem(&lights, Light{vec3{30,20,-30}, 1.5});
+    append_elem(&lights, Light{vec3{30,20,30}, 1.5});
 
     for j in 0..< ctx.height {
         for i in 0..< ctx.width {
             x: f64 = (2 * (f64(i)+ 0.5) / f64(ctx.width) - 1) * math.tan(fov/2)*f64(ctx.width)/f64(ctx.height);
             y: f64 = -(2 * (f64(j) + 0.5) / f64(ctx.height) - 1) * math.tan(fov/2);
             dir: vec3 = la.normalize(vec3{x, y, -1});
-            framebuffer[j * ctx.width + i] = cast_ray(&vec3{0,0,0}, &dir, &spheres, &lights)
+            framebuffer[j * ctx.width + i] = cast_ray(&vec3{0,0,0}, &dir, &spheres, &lights, 0)
         }
     }
 
@@ -96,7 +100,7 @@ write_PPM :: proc(framebuffer: ^[dynamic]vec3, ctx: ^Ctx) {
 }
 
 reflect :: proc(I: ^vec3, N: ^vec3) -> vec3 {
-    return (I^ - N^ * 2 * I^ * N^);
+    return (I^ - N^ * 2 * (I^ * N^));
 }
 
 ray_intersect :: proc(orig: ^vec3, dir: ^vec3, t0: ^f64, sphere: ^Sphere) -> bool {
@@ -114,7 +118,7 @@ ray_intersect :: proc(orig: ^vec3, dir: ^vec3, t0: ^f64, sphere: ^Sphere) -> boo
 
 
 scene_intersect :: proc(orig: ^vec3, dir: ^vec3, spheres: ^[dynamic]Sphere, hit: ^vec3, N: ^vec3, material: ^Material) -> bool {
-    spheres_dist: f64 = 10000000;
+    spheres_dist: f64 = 100000000000;
 
     for i in 0..< len(spheres) {
         dist_i: f64;
@@ -130,14 +134,18 @@ scene_intersect :: proc(orig: ^vec3, dir: ^vec3, spheres: ^[dynamic]Sphere, hit:
 }
 
 
-cast_ray :: proc(orig: ^vec3, dir: ^vec3, spheres: ^[dynamic]Sphere, lights: ^[dynamic]Light) -> vec3 {
+cast_ray :: proc(orig: ^vec3, dir: ^vec3, spheres: ^[dynamic]Sphere, lights: ^[dynamic]Light, depth: int) -> vec3 {
     point: vec3;
     N: vec3;
     material: Material;
 
-    if (!scene_intersect(orig, dir, spheres, &point, &N, &material)) {
-        return vec3{0.2, 0.7, 0.8};
+    if (depth > 4 || !scene_intersect(orig, dir, spheres, &point, &N, &material)) {
+        return vec3{0.2, 0.7, 0.8}; //background colour
     }
+
+    reflect_dir: vec3 = la.normalize(reflect(dir, &N));
+    reflect_orig: vec3 = la.dot(reflect_dir, N) < 0 ? point - N * 0.001 : point + N * 0.001;
+    reflect_colour: vec3 = cast_ray(&reflect_orig, &reflect_dir, spheres, lights, depth + 1);
 
     diffuse_light_intensity: f64;
     specular_light_intensity: f64;
@@ -156,9 +164,9 @@ cast_ray :: proc(orig: ^vec3, dir: ^vec3, spheres: ^[dynamic]Sphere, lights: ^[d
         }
 
         diffuse_light_intensity += lights[i].intensity * max(0, la.dot(light_dir,N));
-        light_dir = -light_dir;
-        specular_light_intensity += math.pow(max(0, la.dot(-reflect(&light_dir, &N),dir^)), material.specular_exponent) * lights[i].intensity;
+        neg_light_dir: vec3 = -light_dir
+        specular_light_intensity += math.pow(max(0, la.dot(-reflect(&neg_light_dir, &N),dir^)), material.specular_exponent) * lights[i].intensity;
     }
 
-    return material.diffuse_color * diffuse_light_intensity * material.albedo[0] + vec3{1,1,1} * specular_light_intensity * material.albedo[1];
+    return material.diffuse_color * diffuse_light_intensity * material.albedo[0] + vec3{1,1,1} * specular_light_intensity * material.albedo[1] + reflect_colour * material.albedo[2];
 }
