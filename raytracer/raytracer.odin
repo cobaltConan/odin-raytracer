@@ -72,6 +72,9 @@ main :: proc() {
     }
 
     write_PPM(&framebuffer, &ctx);
+
+    test: f64 = la.length(vec3{3,4,5})
+    fmt.println(test)
 }
 
 
@@ -100,7 +103,7 @@ write_PPM :: proc(framebuffer: ^[dynamic]vec3, ctx: ^Ctx) {
 }
 
 reflect :: proc(I: ^vec3, N: ^vec3) -> vec3 {
-    return (I^ - N^ * 2 * (I^ * N^));
+    return (I^ - N^ * 2 * I^ * N^);
 }
 
 ray_intersect :: proc(orig: ^vec3, dir: ^vec3, t0: ^f64, sphere: ^Sphere) -> bool {
@@ -159,14 +162,17 @@ cast_ray :: proc(orig: ^vec3, dir: ^vec3, spheres: ^[dynamic]Sphere, lights: ^[d
         shadow_N: vec3
         tmpMaterial: Material
 
-        if (scene_intersect(&shadow_orig, &light_dir, spheres, &shadow_pt, &shadow_N, &tmpMaterial) && (la.length(shadow_pt - shadow_orig) < light_distance)) {
+        if (scene_intersect(&shadow_orig, &light_dir, spheres, &shadow_pt, &shadow_N, &tmpMaterial) &&
+            (la.length(shadow_pt - shadow_orig) < light_distance)) {
             continue
         }
 
         diffuse_light_intensity += lights[i].intensity * max(0, la.dot(light_dir,N));
         neg_light_dir: vec3 = -light_dir
-        specular_light_intensity += math.pow(max(0, la.dot(-reflect(&neg_light_dir, &N),dir^)), material.specular_exponent) * lights[i].intensity;
+        specular_light_intensity += math.pow(max(0, la.dot(-reflect(&neg_light_dir, &N),dir^)),
+            material.specular_exponent) * lights[i].intensity;
     }
 
-    return material.diffuse_color * diffuse_light_intensity * material.albedo[0] + vec3{1,1,1} * specular_light_intensity * material.albedo[1] + reflect_colour * material.albedo[2];
+    //return material.diffuse_color * diffuse_light_intensity * material.albedo[0] + vec3{1,1,1} * specular_light_intensity * material.albedo[1] + reflect_colour * material.albedo[2];
+    return reflect_colour * material.albedo[2];
 }
